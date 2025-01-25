@@ -1,0 +1,45 @@
+{
+  "configurations": [
+    {
+      "chip": "STM32F767ZITx",
+      "consoleLogLevel": "Console",
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "target/thumbv7em-none-eabi/debug/stm32f7-sv2",
+          "rttChannelFormats": [
+            {
+              "channelNumber": 0,
+              "dataFormat": "String",
+              "showTimestamps": true
+            },
+            {
+              "channelNumber": 1,
+              "dataFormat": "BinaryLE"
+            }
+          ],
+          "rttEnabled": true,
+          "svdFile": ""
+        }
+      ],
+      "cwd": "${workspaceFolder}",
+      "probe": "1366:0105:000774119586",
+      "env": {
+        "RUST_LOG": "info"
+      },
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "formatOptions": {},
+        "haltAfterReset": false
+      },
+      "name": "probe_rs",
+      "request": "launch",
+      "runtimeArgs": [
+        "dap-server"
+      ],
+      "runtimeExecutable": "probe-rs",
+      "type": "probe-rs-debug"
+    }
+  ],
+  "version": "0.2.0"
+}

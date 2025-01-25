@@ -1,0 +1,16 @@
+[target.thumbv7em-none-eabi]
+runner = [
+    "probe-rs",
+    "run",
+    "--log-format={{t:dimmed} [{L:bold}]} {s}  {{c} {ff}:{l:1}%dimmed}",
+]
+
+[build]
+target = "thumbv7em-none-eabi"
+
+[env]
+DEFMT_LOG = "trace"
+
+[unstable]
+build-std = ["core"]
+build-std-features = ["panic_immediate_abort"]
