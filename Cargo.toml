@@ -6,11 +6,19 @@ edition = "2021"
 keywords = ["embedded", "stratum", "esp", "esp32s3", "no-std"]
 license = "MIT OR Apache-2.0"
 name = "stm32f7-sv2"
-repository = "https://github.com/GPTechinno/stm32f7-v2"
+repository = "https://github.com/GPTechinno/stm32f7-sv2"
 version = "0.1.0"
 
 [dependencies]
 chrono = { version = "0.4.39", default-features = false }
+# codec_sv2 = { version = "2.0.0", git = "https://github.com/stratum-mining/stratum.git", default-features = false, features = [
+#     "noise_sv2",
+# ] }
+codec_sv2 = { version = "2.0.0", path = "../stratum/protocols/v2/codec-sv2", default-features = false, features = [
+    "noise_sv2",
+] }
+# const_sv2 = { version = "3.0.0", git = "https://github.com/stratum-mining/stratum.git" }
+const_sv2 = { version = "3.0.0", path = "../stratum/protocols/v2/const-sv2" }
 cortex-m = { version = "0.7.7", features = [
     "critical-section-single-core",
     "inline-asm",
@@ -46,7 +54,10 @@ embassy-stm32 = { version = "0.2.0", features = [
 ] }
 embassy-sync = "0.6.2"
 embassy-time = { version = "0.4.0", features = ["tick-hz-32_768"] }
+embedded-alloc = "0.6.0"
 embedded-io-async = "0.6.1"
+# key-utils = { version = "1.1.0", git = "https://github.com/stratum-mining/stratum.git", default-features = false }
+key-utils = { version = "1.1.0", path = "../stratum/utils/key-utils", default-features = false }
 panic-halt = "1.0.0"
 panic-probe = { version = "0.3.2", features = ["print-defmt"], optional = true }
 rand_core = "0.6.4"

@@ -12,5 +12,5 @@ target = "thumbv7em-none-eabi"
 DEFMT_LOG = "trace"
 
 [unstable]
-build-std = ["core"]
+build-std = ["core", "alloc"]
 build-std-features = ["panic_immediate_abort"]

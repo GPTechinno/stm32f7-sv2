@@ -9,6 +9,7 @@ in
     buildInputs = with pkgs; [
       clang
       cmake
+      gcc-arm-embedded-13
       # Replace llvmPackages with llvmPackages_X, where X is the latest LLVM version (at the time of writing, 16)
       llvmPackages.bintools
       openssl
@@ -21,6 +22,7 @@ in
     shellHook = ''
       export PATH=$PATH:''${CARGO_HOME:-~/.cargo}/bin
       export PATH=$PATH:''${RUSTUP_HOME:-~/.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
+      export CC="arm-none-eabi-gcc"
       export PROBE_RS_PROBE=1366:0105:000774119586
       export PROBE_RS_PROTOCOL=swd
       export PROBE_RS_CHIP=STM32F767ZI

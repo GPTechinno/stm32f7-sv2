@@ -3,8 +3,16 @@
 
 mod fmt;
 
-use chrono::DateTime;
-use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+extern crate alloc;
+
+use alloc::string::ToString;
+use chrono::{DateTime, NaiveDateTime};
+use codec_sv2::{HandshakeRole, Initiator, State};
+use const_sv2::RESPONDER_EXPECTED_HANDSHAKE_MESSAGE_SIZE;
+use core::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ptr::addr_of_mut,
+};
 use edge_mdns::{
     buf::VecBufAccess,
     domain::base::Ttl,
@@ -30,10 +38,12 @@ use embassy_stm32::{
     rtc::{Rtc, RtcConfig},
     time::Hertz,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use embassy_time::{Duration, Timer};
+use embedded_alloc::LlffHeap as Heap;
 use embedded_io_async::Write;
 use fmt::*;
+use key_utils::Secp256k1PublicKey;
 use rand_core::RngCore;
 use sntpc::{NtpContext, NtpTimestampGenerator};
 use static_cell::StaticCell;
@@ -49,12 +59,23 @@ bind_interrupts!(struct Irqs {
 });
 
 type Device = Ethernet<'static, ETH, GenericSMI>;
+type RtcMutex = Mutex<NoopRawMutex, Rtc>;
 
 const NTP_SERVER: &str = "pool.ntp.org";
 const HOSTNAME: &str = env!("HOSTNAME");
+const AUTHORITY_PUBLIC_K: &str = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72";
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(addr_of_mut!(HEAP_MEM) as usize, HEAP_SIZE) }
+    }
     let mut config = embassy_stm32::Config::default();
     {
         use embassy_stm32::rcc::*;
@@ -135,16 +156,61 @@ async fn main(spawner: Spawner) {
 
     let rtc = Rtc::new(p.RTC, RtcConfig::default());
     // debug!("RTC {:?}", rtc.now().unwrap()); // need https://github.com/embassy-rs/embassy/pull/3802
+    static RTC_MUTEX: StaticCell<RtcMutex> = StaticCell::new();
+    let rtc = RTC_MUTEX.init(Mutex::new(rtc));
     unwrap!(spawner.spawn(sntp_task(stack, rtc)));
 
     // Launch a test TCP task
     // unwrap!(spawner.spawn(test_tcp_task(stack)));
+
+    // Launch a stratum v2 task
+    unwrap!(spawner.spawn(stratum_v2_task(stack, rng, rtc)));
 
     loop {
         led.set_high();
         Timer::after(Duration::from_millis(500)).await;
         led.set_low();
         Timer::after(Duration::from_millis(500)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn stratum_v2_task(
+    stack: embassy_net::Stack<'static>,
+    mut rng: Rng<'static, RNG>,
+    rtc: &'static RtcMutex,
+) -> ! {
+    // Handshake
+    let authority_public_k: Secp256k1PublicKey = AUTHORITY_PUBLIC_K
+        .to_string()
+        .try_into()
+        .expect("Failed to convert receiver public key to Secp256k1PublicKey");
+    let initiator = Initiator::from_raw_k_with_rng(authority_public_k.into_bytes(), &mut rng)
+        .expect("Failed to create initiator role from raw pub key");
+
+    let mut noise_state = State::initialized(HandshakeRole::Initiator(initiator));
+
+    let first_message = noise_state
+        .step_0()
+        .expect("Initiator failed first step of handshake");
+    let _first_message: [u8; RESPONDER_EXPECTED_HANDSHAKE_MESSAGE_SIZE] = first_message
+        .get_payload_when_handshaking()
+        .try_into()
+        .expect("Handshake remote invlaid message");
+    //TODO: send first_message by TCP and receive the second_message as an answer
+
+    let now: NaiveDateTime = rtc.lock().await.now().unwrap().into();
+    let now = now.and_utc().timestamp() as u32;
+    // let noise_state = noise_state
+    //     .step_2_with_now(second_message, now)
+    //     .expect("Initiator failed third step of handshake");
+
+    let mut noise_state = match noise_state {
+        State::Transport(c) => State::with_transport_mode(c),
+        _ => fmt::panic!("todo"),
+    };
+    loop {
+        //TODO: exchange some Mining related messages
     }
 }
 
@@ -226,7 +292,7 @@ async fn mdns_task(
 }
 
 #[embassy_executor::task]
-async fn sntp_task(stack: embassy_net::Stack<'static>, mut rtc: Rtc) -> ! {
+async fn sntp_task(stack: embassy_net::Stack<'static>, rtc: &'static RtcMutex) -> ! {
     info!("Syncing RTC from SNTP...");
 
     #[derive(Copy, Clone, Default)]
@@ -279,7 +345,7 @@ async fn sntp_task(stack: embassy_net::Stack<'static>, mut rtc: Rtc) -> ! {
         match sntpc::get_time(SocketAddr::from((ntpd_addr, 123)), &socket, context).await {
             Ok(time) => {
                 info!("NTP Time: {:?}", time);
-                if let Err(_e) = rtc.set_datetime(
+                if let Err(_e) = rtc.lock().await.set_datetime(
                     DateTime::from_timestamp(time.seconds as i64 + 1, 0)
                         .unwrap()
                         .naive_utc()
